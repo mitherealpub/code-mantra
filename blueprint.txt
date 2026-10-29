@@ -1,0 +1,188 @@
+
+AI Prompt Specification: Gamified Coding Telemetry Platform (Elixir/Phoenix)
+
+Context & Core Inspiration:
+We are building a highly real-time, gamified coding telemetry system using a pure Elixir and Phoenix LiveView architecture. The platform merges the programmatic telemetry ingestion concepts of Code::Stats (receiving development metrics via IDE extensions) with the retro gameplay, status tracking, and password mechanics of Faxanadu (NES).
+System Design Rules to Re-Initialize:
+1. Multi-Class Specialization: Users have a global aggregate account status, but each programming language has its own independent rank, level trajectory, and title generation schema (tracked via a user_languages table).
+2. Procedural Rank Generation (The King): Ranks are not hardcoded. A domain logic module (GameEngine.King) evaluates XP milestones exponentially and dynamically synthesizes unique titles based on the user's current track proficiency (e.g., "Level 6 Knight-Compiler: The Asynchronous Elixir Supervisor").
+3. Mantra Snapshot Saves (The Priest): State saving mirrors old password-save mechanics. A UUID-keyed mantras table stores an immutable snapshot of all language tracks, levels, and companions. The Priest only locks down a save state if all language tracks are fully caught up with the King's blessings (no unspent level-ups). If valid, it can completely restore a developer's profile via atomic database transactions.
+4. AI Companions: When developers utilize AI tools, telemetry triggers Companion XP instead of language XP. Companions exist as distinct party members (companions table) with custom nicknames, independent levels, and procedurally generated robotic archetypes (e.g., "Level 4 Subroutine: Generative-Golem Neural Oracle").
+5. Anonymized Project Sessions & Teams: A global Elixir Registry and DynamicSupervisor automatically maps developers into real-time cooperative party rooms (PartyRoom GenServers) based on their workspace. To protect intellectual property, local project file-paths are cryptographically hashed using a server salt into an un-hashable runic signature (e.g., REALM-4aef81).
+6. 1% Cooperative Party Multiplier: The orchestrator inspects the live memory size of the target PartyRoom GenServer. For every additional coworker concurrently writing code inside that workspace signature, a compounding 1% bonus XP multiplier is injected into the telemetry stream (capped at 25%).
+7. Ambient Background Loop: A RandomWorldWorker GenServer runs silently on background runtime threads, waking up at random intervals to simulate a living environment by randomly executing rogue King promotions or mysterious background Priest Mantra saves to active developers in the wild.
+8. Pure LiveView Architecture: The system entirely completely bypasses GraphQL/API client frameworks. Real-time updates, terminal logs, scoreboards, and profile cards are pushed directly over WebSockets via single-codebase LiveView modules.
+
+📂 Current Module & File Tree Registry
+
+If I ask you to generate, review, or expand code, assume the codebase is structured around this exact layout:
+text
+lib/
+├── code_stats/                   # --- DATABASE & STORAGE CORE ---
+│   ├── application.ex            # Configures Registry and DynamicSupervisor trees
+│   ├── repo.ex                   # Database Ecto connection wrapper
+│   └── accounts/
+│       └── user.ex               # Baseline global developer schema
+├── game_engine/                  # --- RPG METRICS & DOMAIN LOGIC ---
+│   ├── king.ex                   # Exponential level validation & procedural titles
+│   ├── companion_king.ex         # AI Familiar archetype generator
+│   ├── priest.ex                 # Mantra verification, validation, and generation
+│   ├── priest_restore.ex         # Database rollbacks and secure recovery transactions
+│   ├── project_crypt.ex          # Runic path hashing with server salts
+│   ├── party_room.ex             # Room tracking GenServer with transient lifecycle timeouts
+│   ├── orchestrator.ex           # Applies 1% party multiplier & handles Ecto upserts
+│   ├── encounter_engine.ex       # Telemetry rolling mechanism for random NPC actions
+│   └── random_world_worker.ex    # Background worker running randomized cron events
+└── code_stats_web/               # --- INTERFACE & ROUTING ---
+    ├── endpoint.ex               # Phoenix core web endpoint asset
+    ├── router.ex                 # Root, profile (~username), and JSON pulse paths
+    ├── controllers/
+    │   └── pulse_controller.ex   # IDE webhook parsing, realm placement, and buffer handler
+    └── live/
+        ├── auth_gate_live.ex     # Password checkpoint gate and character spawner
+        ├── terminal_live.ex      # Command console HUD (status, visit king, visit priest)
+        ├── profile_live.ex       # Renders standard Gravatar side-by-side with dynamic RPG sprite
+        └── leaderboard_live.ex   # High-performance leaderboard indexed by Ecto 
+
+
+
+🗺️ Code::Mantra Regenerative Blueprint
+
+System Identity: A real-time, gamified coding telemetry engine built in Elixir and Phoenix LiveView. It mashes together the keystroke-tracking architecture of Code::Stats with the stateful checkpoint, password, and progression mechanics of Faxanadu. Writing code functions as an RPG grind where individual programming languages act as distinct character classes.
+
+💾 1. Database Schema Blueprint (priv/repo/migrations/)
+
+elixir
+defmodule CodeStats.Repo.Migrations.CreateGameEcosystem do
+  use Ecto.Migration
+
+  def change do
+    # 1. Core Users Table
+    create table(:users) do
+      add :username, :string, null: false
+      add :total_xp, :integer, default: 0
+      add :current_level, :integer, default: 1
+      add :rank_title, :string, default: "Uninitiated Exile"
+      timestamps()
+    end
+    create unique_index(:users, [:username])
+    create index(:users, [:total_xp, :username])
+
+    # 2. Multi-Class Language Tracking Table
+    create table(:user_languages) do
+      add :user_id, references(:users, on_delete: :delete_all), null: false
+      add :language, :string, null: false
+      add :total_xp, :integer, default: 0
+      add :current_level, :integer, default: 1
+      add :rank_title, :string, default: "Untested Initiate"
+      timestamps()
+    end
+    create unique_index(:user_languages, [:user_id, :language])
+    create index(:user_languages, [:language, :total_xp, :user_id])
+
+    # 3. AI Companions (Familiars triggered when utilizing AI/LLM tools)
+    create table(:companions) do
+      add :user_id, references(:users, on_delete: :delete_all), null: false
+      add :ai_model_name, :string, null: false
+      add :nickname, :string, null: false
+      add :total_xp, :integer, default: 0
+      add :current_level, :integer, default: 1
+      add :archetype_title, :string, default: "Silicon Homunculus"
+      timestamps()
+    end
+    create unique_index(:companions, [:user_id, :ai_model_name])
+
+    # 4. Mantras (Faxanadu-style cryptographic password checkpoint snapshots)
+    create table(:mantras, primary_key: false) do
+      add :id, :uuid, primary_key: true
+      add :user_id, references(:users, on_delete: :delete_all), null: false
+      add :xp_snapshot, :integer, null: false
+      add :level_snapshot, :integer, null: false
+      add :rank_snapshot, :string, null: false
+      add :hashed_project_anchor, :string, null: true
+      add :metadata, :map # Stores full snapshot of languages and companion maps
+      timestamps(updated_at: false)
+    end
+  end
+end
+Use code with caution.
+
+🧠 2. Core Game Logic Components (lib/game_engine/)
+
+
+A. The King Engine (king.ex)
+
+• XP Curves: \(\text{level} = \lfloor(\text{xp} / 1000)^{(1 / 1.5)}\rfloor\).
+• Asynchronous Coronation: Users accumulate raw XP in the background but do not update their levels or titles until they explicitly visit the King (or trigger a random world encounter).
+• Procedural Rank Generation: Dynamically synthesizes a rank based on their highest programming language and level tier (e.g., "Level 7 Knight-Compiler: The Asynchronous Elixir Supervisor").
+elixir
+defmodule GameEngine.King do
+  @xp_base 1000
+  @xp_factor 1.5
+
+  def calculate_true_level(xp) when xp < @xp_base, do: 1
+  def calculate_true_level(xp), do: Float.floor(:math.pow(xp / @xp_base, 1 / @xp_factor)) |> trunc()
+
+  def visit_king(user_language_records) do
+    Enum.reduce(user_language_records, [], fn user_lang, acc ->
+      true_lvl = calculate_true_level(user_lang.total_xp)
+      if true_lvl > user_lang.current_level do
+        new_title = generate_language_rank(user_lang.language, true_lvl)
+        [{user_lang.id, true_lvl, new_title} | acc]
+      else
+        acc
+      end
+    end)
+  end
+
+  defp generate_language_rank(lang, level) do
+    tier = cond do
+      level in 1..5 -> "Aspirant"
+      level in 6..10 -> "Knight-Compiler"
+      true -> "Overlord"
+    end
+    "Level #{level} #{tier}: Optimized #{String.capitalize(lang)} Artisan"
+  end
+end
+Use code with caution.
+
+B. The Checkpoint Guard (priest.ex & priest_restore.ex)
+
+• The Rule: The Priest will refuse to grant a Mantra save state if any language or AI companion has unspent XP that requires a visit to the King. Ranks must be fully up-to-date.
+• Timeline Rollbacks: Reconstructing a Mantra completely wipes the user's active session stats and rolls their profile, languages, and companion datasets back to the exact snapshot recorded inside the UUID transaction.
+
+📡 3. Real-Time Telemetry & Team Multiplexing
+
+
+A. Anonymized Party Rooms (project_crypt.ex & party_room.ex)
+
+• Path Hashing: Hashes absolute project repository file paths with a cryptographic salt into a short string (e.g., REALM-4aef81) to completely hide commercial codebase directories.
+• Concurrently Synced Rooms: A dynamic, registry-backed GenServer structure handles automated user check-ins. If developers are editing within the same project workspace signature, they are placed in a cooperative dungeon room together.
+
+B. The 1% Cooperative Modifiers (orchestrator.ex)
+
+• Cooperative Buffing: Telemetry ingestion monitors the active user map of the PartyRoom GenServer. For every extra developer concurrently typing in the matching workspace signature, a compounding 1% bonus XP is tacked onto the incoming payload array (e.g., 3 active developers = a 1.02 multiplier curve).
+elixir
+defmodule GameEngine.Orchestrator do
+  @base_multiplier 1.0
+  @per_member_bonus 0.01  # 🌟 1% bonus multiplier per developer in party room
+  @max_multiplier 1.25
+
+  def ingest_with_multipliers(user_id, language, raw_xp, hashed_project) do
+    party_size = case Registry.lookup(CodeStats.ProjectRegistry, hashed_project) do
+      [{pid, _}] -> map_size(:sys.get_state(pid).active_members)
+      [] -> 1
+    end
+
+    multiplier = min(@base_multiplier + ((party_size - 1) * @per_member_bonus), @max_multiplier)
+    final_xp = round(raw_xp * multiplier)
+    
+    # Atomically inserts or updates User and UserLanguage tables inside Repo.transaction/1...
+  end
+end
+Use code with caution.
+
+👾 4. Ambient Cron Layer & UI Framework
+
+• Wandering Simulation (random_world_worker.ex): A transient GenServer running a randomized timer wheel (5..15 minutes) that randomly triggers a rogue King coronation or a free automated Priest Mantra save state to active database entities.
+• Pure LiveView Stack (AuthGateLive, TerminalLive, ProfileLive, LeaderboardLive): Bypasses GraphQL/Absinthe entirely. Renders a retro 8-bit command terminal, automated arcade scoreboards via composite indices, and profile grids combining standard network Gravatar nodes alongside Procedurally generated pixel sprite cards.
